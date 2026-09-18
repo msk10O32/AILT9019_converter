@@ -1,3 +1,6 @@
+# Ignore rules for the hkd2usd project. Everything here is generated locally,
+# so nothing in this list belongs in version control.
+
 # Byte-compiled / cache
 __pycache__/
 *.py[cod]
@@ -13,19 +16,33 @@ dist/
 .venv/
 venv/
 env/
+ENV/
 
 # Test and coverage output
 .pytest_cache/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 
-# Local secrets and scratch files — the app itself needs no config
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local secrets and per-machine overrides. The app needs no configuration to
+# run, so a local settings module is only ever a developer's own scratch file.
 .env
 *.local
+local_settings.py
 
-# Django
-db.sqlite3
-db.sqlite3-journal
+# Django. db.sqlite3 is created by `manage.py migrate` and holds nothing but
+# Django's own tables and the session history.
+*.sqlite3
+*.sqlite3-journal
 /staticfiles/
 /media/
 *.log
@@ -33,6 +50,9 @@ db.sqlite3-journal
 # Editors and OS cruft
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
 desktop.ini
