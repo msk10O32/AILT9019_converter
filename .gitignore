@@ -39,6 +39,10 @@ htmlcov/
 *.local
 local_settings.py
 
+# Agent instructions and editor state are per-machine working notes, kept out
+# of the repository on purpose. The file stays on disk and keeps working.
+AGENTS.md
+
 # Django. db.sqlite3 is created by `manage.py migrate` and holds nothing but
 # Django's own tables and the session history.
 *.sqlite3
