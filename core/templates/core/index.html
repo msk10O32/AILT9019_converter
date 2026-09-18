@@ -1,0 +1,94 @@
+{% extends "core/base.html" %}
+{% load static %}
+
+{% block content %}
+<section class="card">
+  <form method="post" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <ul class="errors">
+        {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+
+    <div class="field">
+      <label for="{{ form.amount.id_for_label }}">{{ form.amount.label }}</label>
+      {{ form.amount }}
+      {% if form.amount.errors %}<p class="error">{{ form.amount.errors.0 }}</p>{% endif %}
+    </div>
+
+    <fieldset class="field">
+      <legend>{{ form.direction.label }}</legend>
+      <div class="radio-group">{{ form.direction }}</div>
+    </fieldset>
+
+    <fieldset class="field">
+      <legend>{{ form.source.label }}</legend>
+      <div class="radio-group">{{ form.source }}</div>
+    </fieldset>
+
+    <div class="field" id="custom-rate-field">
+      <label for="{{ form.custom_rate.id_for_label }}">{{ form.custom_rate.label }}</label>
+      {{ form.custom_rate }}
+      <p class="hint">{{ form.custom_rate.help_text }}</p>
+      {% if form.custom_rate.errors %}<p class="error">{{ form.custom_rate.errors.0 }}</p>{% endif %}
+    </div>
+
+    <button type="submit" class="primary">Convert</button>
+  </form>
+</section>
+
+{% if result %}
+<section class="card result" id="result" aria-live="polite">
+  {% for warning in result.warnings %}
+    <p class="warning">{{ warning }}</p>
+  {% endfor %}
+
+  <p class="figure">
+    <span class="from">{{ result.amount }}</span>
+    <span class="arrow">&rarr;</span>
+    <strong class="to">{{ result.converted }}</strong>
+  </p>
+
+  <dl class="meta">
+    <div><dt>Rate</dt><dd>{{ result.rate }} {{ result.rate_quote }}</dd></div>
+    <div><dt>Source</dt><dd><span class="pill pill-{{ result.source|slugify }}">{{ result.source }}</span></dd></div>
+    {% if result.as_of %}
+      <div><dt>Provider time</dt><dd>{{ result.as_of }}</dd></div>
+    {% endif %}
+  </dl>
+</section>
+{% endif %}
+
+{% if history %}
+<section class="card">
+  <div class="card-head">
+    <h2>Recent conversions</h2>
+    <form method="post" action="{% url 'core:clear_history' %}">
+      {% csrf_token %}
+      <button type="submit" class="link">Clear</button>
+    </form>
+  </div>
+  <table class="history">
+    <thead>
+      <tr><th>When</th><th>Conversion</th><th>Rate</th><th>Source</th></tr>
+    </thead>
+    <tbody>
+      {% for row in history %}
+        <tr>
+          <td class="nowrap">{{ row.at }}</td>
+          <td class="nowrap">{{ row.amount }} &rarr; {{ row.converted }}</td>
+          <td>{{ row.rate }}</td>
+          <td><span class="pill pill-{{ row.source|slugify }}">{{ row.source }}</span></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'core/app.js' %}"></script>
+{% endblock %}

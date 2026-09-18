@@ -1,0 +1,26 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}HKD to USD Converter{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'core/style.css' %}">
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <h1>HKD <span class="swatch">&rarr;</span> USD</h1>
+      <p class="tagline">Convert Hong Kong dollars to US dollars at a rate you can trace.</p>
+    </header>
+    {% block content %}{% endblock %}
+    <footer class="footnote">
+      <p>
+        The default rate is the 7.80 midpoint of the HKD peg band (7.75&ndash;7.85), not a
+        live quote. The live provider is a free keyless feed &mdash; fine for a rough figure,
+        not for accounting.
+      </p>
+    </footer>
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
