@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<!--
+  Standalone HKD -> USD converter. Open this file directly in a browser: no
+  server, no install, no dependencies. Styles and script are inline so the one
+  file is the whole app.
+
+  The conversion rules mirror hkd2usd.py, which is the reference implementation
+  used by the command line and the Django page. The peg default and the provider
+  URL are the constants most likely to drift apart, so test_standalone_page.py
+  asserts they still match.
+
+  The live rate is fetched from the provider by the browser, so it needs an
+  internet connection and the provider's CORS headers. Opened straight from
+  disk, some browsers treat the page as a null origin and block that request;
+  the page then says so and falls back to the peg default rather than failing.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HKD to USD Converter</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --ink: #15171c;
+    --muted: #5c6470;
+    --line: #e3e6eb;
+    --accent: #1f6feb;
+    --accent-ink: #ffffff;
+    --warn-bg: #fff6e5;
+    --warn-ink: #8a5a00;
+    --warn-line: #f0d9a8;
+    --error: #b3261e;
+    --pill: #eef1f5;
+    --radius: 12px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --card: #1c1f25;
+      --ink: #ecedf0;
+      --muted: #9aa2b1;
+      --line: #2c313a;
+      --accent: #4c8dff;
+      --accent-ink: #0b1220;
+      --warn-bg: #33290f;
+      --warn-ink: #ffd88a;
+      --warn-line: #5a4a1d;
+      --error: #ff9c92;
+      --pill: #262b33;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  [hidden] { display: none !important; }
+
+  body {
+    margin: 0;
+    padding: 2.5rem 1.25rem 3rem;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .shell { max-width: 720px; margin: 0 auto; }
+
+  .masthead { margin-bottom: 1.75rem; }
+
+  .masthead h1 { margin: 0; font-size: 1.9rem; letter-spacing: -0.02em; }
+
+  .swatch { color: var(--accent); }
+
+  .tagline { margin: 0.35rem 0 0; color: var(--muted); }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.4rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .field { margin-bottom: 1.15rem; border: 0; padding: 0; }
+  .field:last-of-type { margin-bottom: 1.35rem; }
+
+  .field label, .field legend {
+    display: block;
+    padding: 0;
+    margin-bottom: 0.4rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+
+  input[type="text"] {
+    width: 100%;
+    padding: 0.7rem 0.85rem;
+    font-size: 1.15rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+  }
+
+  input[type="text"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-color: var(--accent);
+  }
+
+  /* The options are direct children of the group here, unlike the Django page
+     where the widget adds a wrapper div around each one. */
+  .radio-group { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+  .radio-group label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0;
+    padding: 0.4rem 0.85rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  .radio-group label:has(input:checked) {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    font-weight: 600;
+  }
+
+  .radio-group input { accent-color: var(--accent); margin: 0; }
+
+  .hint { margin: 0.35rem 0 0; font-size: 0.82rem; color: var(--muted); }
+
+  button.primary {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--accent-ink);
+    background: var(--accent);
+    border: 1px solid transparent;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+
+  button.primary:hover { filter: brightness(1.08); }
+  button.primary[disabled] { opacity: 0.65; cursor: progress; }
+
+  .result .figure {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin: 0 0 1rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .figure .from { color: var(--muted); font-size: 1.2rem; }
+  .figure .arrow { color: var(--accent); }
+  .figure .to { font-size: 2rem; letter-spacing: -0.02em; }
+
+  .meta { margin: 0; display: grid; gap: 0.45rem; }
+  .meta > div { display: flex; justify-content: space-between; gap: 1rem; }
+  .meta dt { color: var(--muted); font-size: 0.88rem; }
+  .meta dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+  .pill {
+    display: inline-block;
+    padding: 0.1rem 0.6rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border-radius: 999px;
+    background: var(--pill);
+  }
+
+  .pill-live { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  .pill-peg-default { background: color-mix(in srgb, var(--muted) 18%, transparent); }
+
+  .warning {
+    margin: 0 0 1rem;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.88rem;
+    color: var(--warn-ink);
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-line);
+    border-radius: 8px;
+  }
+
+  .error { margin: 0.4rem 0 0; font-size: 0.85rem; color: var(--error); }
+
+  .footnote {
+    margin-top: 2rem;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+
+  .footnote p { margin: 0; }
+</style>
+</head>
+<body>
+<main class="shell">
+  <header class="masthead">
+    <h1>HKD <span class="swatch">&rarr;</span> USD</h1>
+    <p class="tagline">Convert Hong Kong dollars to US dollars at a rate you can trace.</p>
+  </header>
+
+  <section class="card">
+    <form id="converter" novalidate>
+      <div class="field">
+        <label for="amount">Amount</label>
+        <input id="amount" type="text" inputmode="decimal" placeholder="1000" autofocus>
+        <p class="error" id="amount-error" hidden></p>
+      </div>
+
+      <fieldset class="field">
+        <legend>Direction</legend>
+        <div class="radio-group">
+          <label><input type="radio" name="direction" value="hkd_to_usd" checked> HKD to USD</label>
+          <label><input type="radio" name="direction" value="usd_to_hkd"> USD to HKD</label>
+        </div>
+      </fieldset>
+
+      <fieldset class="field">
+        <legend>Rate source</legend>
+        <div class="radio-group">
+          <label><input type="radio" name="source" value="peg" checked> Peg default (7.80)</label>
+          <label><input type="radio" name="source" value="live"> Live market rate</label>
+          <label><input type="radio" name="source" value="custom"> Custom rate</label>
+        </div>
+      </fieldset>
+
+      <div class="field" id="custom-rate-field" hidden>
+        <label for="custom-rate">Custom rate (HKD per USD)</label>
+        <input id="custom-rate" type="text" inputmode="decimal" placeholder="7.85">
+        <p class="hint">Only used when the rate source is set to Custom.</p>
+        <p class="error" id="custom-rate-error" hidden></p>
+      </div>
+
+      <button type="submit" class="primary" id="submit">Convert</button>
+    </form>
+  </section>
+
+  <section class="card result" id="result" hidden aria-live="polite">
+    <p class="warning" id="warning" hidden></p>
+    <p class="figure">
+      <span class="from" id="from"></span>
+      <span class="arrow">&rarr;</span>
+      <strong class="to" id="to"></strong>
+    </p>
+    <dl class="meta">
+      <div><dt>Rate</dt><dd id="rate"></dd></div>
+      <div><dt>Source</dt><dd><span class="pill" id="source"></span></dd></div>
+      <div id="as-of-row" hidden><dt>Provider time</dt><dd id="as-of"></dd></div>
+    </dl>
+  </section>
+
+  <footer class="footnote">
+    <p>
+      The default rate is the 7.80 midpoint of the HKD peg band (7.75&ndash;7.85), not a
+      live quote. The live provider is a free keyless feed &mdash; fine for a rough figure,
+      not for accounting.
+    </p>
+  </footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  // Mirrors hkd2usd.py. Keep the two in step.
+  const PEG_DEFAULT_HKD_PER_USD = 7.80;
+  const API_URL = "https://open.er-api.com/v6/latest/HKD";
+  const LIVE_TIMEOUT_MS = 5000;
+
+  const form = document.getElementById("converter");
+  const amountInput = document.getElementById("amount");
+  const customRateInput = document.getElementById("custom-rate");
+  const customRateField = document.getElementById("custom-rate-field");
+  const submitButton = document.getElementById("submit");
+  const amountError = document.getElementById("amount-error");
+  const customRateError = document.getElementById("custom-rate-error");
+  const resultCard = document.getElementById("result");
+  const warningLine = document.getElementById("warning");
+  const asOfRow = document.getElementById("as-of-row");
+
+  const MONEY = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  function money(value, symbol) {
+    return symbol + MONEY.format(value);
+  }
+
+  function selected(name) {
+    const checked = form.querySelector('input[name="' + name + '"]:checked');
+    return checked ? checked.value : null;
+  }
+
+  // Same tolerance as hkd2usd.parse_amount: symbols and thousands separators
+  // are accepted, negative amounts are not.
+  function parseAmount(text) {
+    let cleaned = String(text).trim().toUpperCase();
+    const prefixes = ["HK$", "US$", "HKD", "USD", "$"];
+    for (let i = 0; i < prefixes.length; i += 1) {
+      if (cleaned.indexOf(prefixes[i]) === 0) {
+        cleaned = cleaned.slice(prefixes[i].length).trim();
+        break;
+      }
+    }
+    const value = Number(cleaned.replace(/,/g, ""));
+    if (cleaned === "" || !isFinite(value)) {
+      throw new Error("'" + String(text).trim() + "' is not a number. Try something like 1000 or 1,500.50.");
+    }
+    if (value < 0) {
+      throw new Error("Amount cannot be negative.");
+    }
+    return value;
+  }
+
+  function parseRate(text) {
+    const cleaned = String(text).trim();
+    const value = Number(cleaned.replace(/,/g, ""));
+    if (cleaned === "" || !isFinite(value)) {
+      throw new Error("'" + cleaned + "' is not a number.");
+    }
+    if (value <= 0) {
+      throw new Error("The rate must be greater than zero.");
+    }
+    return value;
+  }
+
+  // The same sanity band the Python side enforces, so a provider that reports
+  // HKD per USD under the USD key is rejected rather than shown ~7.8x wrong.
+  async function fetchLiveRate() {
+    const controller = new AbortController();
+    const timer = setTimeout(function () { controller.abort(); }, LIVE_TIMEOUT_MS);
+    let payload;
+    try {
+      const response = await fetch(API_URL, { signal: controller.signal, cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("HTTP " + response.status);
+      }
+      payload = await response.json();
+    } catch (error) {
+      const reason = error && error.name === "AbortError" ? "timed out" : error.message;
+      throw new Error("could not reach the rate provider (" + reason + ")");
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (payload.result !== "success") {
+      throw new Error("provider refused the request: " + (payload["error-type"] || payload.result));
+    }
+    const usdPerHkd = Number(payload.rates && payload.rates.USD);
+    if (!isFinite(usdPerHkd)) {
+      throw new Error("provider response carried no usable USD rate");
+    }
+    if (!(usdPerHkd > 0.05 && usdPerHkd < 0.5)) {
+      throw new Error("implausible rate from provider: " + usdPerHkd + " USD per HKD");
+    }
+    return { hkdPerUsd: 1 / usdPerHkd, asOf: payload.time_last_update_utc || "" };
+  }
+
+  async function liveOrFallback() {
+    try {
+      const live = await fetchLiveRate();
+      return { value: live.hkdPerUsd, source: "live", asOf: live.asOf, warning: "" };
+    } catch (error) {
+      return {
+        value: PEG_DEFAULT_HKD_PER_USD,
+        source: "peg default",
+        asOf: "",
+        warning: "Live rate unavailable (" + error.message + "); using the peg default.",
+      };
+    }
+  }
+
+  function showErrors(amountMessage, rateMessage) {
+    amountError.textContent = amountMessage || "";
+    amountError.hidden = !amountMessage;
+    customRateError.textContent = rateMessage || "";
+    customRateError.hidden = !rateMessage;
+    resultCard.hidden = true;
+  }
+
+  function render(amount, rate, reverse, warning) {
+    const fromSymbol = reverse ? "US$" : "HK$";
+    const toSymbol = reverse ? "HK$" : "US$";
+    const converted = reverse ? amount * rate.value : amount / rate.value;
+
+    document.getElementById("from").textContent = money(amount, fromSymbol);
+    document.getElementById("to").textContent = money(converted, toSymbol);
+    document.getElementById("rate").textContent =
+      rate.value.toFixed(4) + (reverse ? " USD per HKD" : " HKD per USD");
+
+    const pill = document.getElementById("source");
+    pill.textContent = rate.source;
+    pill.className = "pill pill-" + rate.source.replace(/\s+/g, "-");
+
+    document.getElementById("as-of").textContent = rate.asOf;
+    asOfRow.hidden = !rate.asOf;
+
+    warningLine.textContent = warning;
+    warningLine.hidden = !warning;
+
+    resultCard.hidden = false;
+  }
+
+  async function convert() {
+    amountError.hidden = true;
+    customRateError.hidden = true;
+
+    let amount;
+    try {
+      amount = parseAmount(amountInput.value);
+    } catch (error) {
+      return showErrors(error.message, "");
+    }
+    if (amount === 0) {
+      return showErrors("Enter an amount greater than zero.", "");
+    }
+
+    const source = selected("source");
+    let rate;
+
+    if (source === "custom") {
+      let custom;
+      try {
+        custom = parseRate(customRateInput.value);
+      } catch (error) {
+        return showErrors("", error.message);
+      }
+      rate = { value: custom, source: "supplied", asOf: "", warning: "" };
+    } else if (source === "live") {
+      // Only the live source is slow, so only it needs a busy state.
+      submitButton.disabled = true;
+      submitButton.textContent = "Fetching live rate…";
+      try {
+        rate = await liveOrFallback();
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "Convert";
+      }
+    } else {
+      rate = { value: PEG_DEFAULT_HKD_PER_USD, source: "peg default", asOf: "", warning: "" };
+    }
+
+    render(amount, rate, selected("direction") === "usd_to_hkd", rate.warning);
+  }
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    convert();
+  });
+
+  // Flipping the direction converts straight away, matching the Django page.
+  form.querySelectorAll('input[name="direction"]').forEach(function (radio) {
+    radio.addEventListener("change", function () {
+      if (amountInput.value.trim() !== "") {
+        convert();
+      }
+    });
+  });
+
+  // The custom rate is irrelevant unless it is the selected source, so hide it
+  // and keep whatever is in it out of the way.
+  form.querySelectorAll('input[name="source"]').forEach(function (radio) {
+    radio.addEventListener("change", function () {
+      const custom = selected("source") === "custom";
+      customRateField.hidden = !custom;
+      if (custom) {
+        customRateInput.focus();
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
